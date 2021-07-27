@@ -1,6 +1,6 @@
 #!/bin/bash
 #================================================================================
-# Name:	cr_awrm.sh
+# Name:	awrm_gen.sh
 # Type:	bash script
 # Date:	07-July 2021
 # From: Customer Architecture & Engineering (CAE) - Microsoft
@@ -52,13 +52,18 @@
 #================================================================================
 #
 #--------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------
+_sqlFile=./awrm_gen.sql
+_csvFile=./awrm_gen.csv
+#
+#--------------------------------------------------------------------------------
 # First, spool the DDL code to the SQL*Plus script to drop and recreate the
 # AWR_MINER_xxxx tables...
 #--------------------------------------------------------------------------------
-cat << __EOF1__
+cat << __EOF1__ > ${_sqlFile}
 whenever oserror exit failure rollback
 set echo on feedback on timing on
-spool cr_awrm
+spool awrm_gen
 drop table awr_miner_info purge;
 drop table awr_miner_disk purge;
 drop table awr_miner_mem purge;
@@ -132,10 +137,10 @@ __EOF1__
 for _f in $(ls -1 ./awr-hist-*.out)
 do
 	#
-	echo ""
-	echo "REM "
-	echo "REM processing AWR Miner dump file \"${_f}\"..."
-	echo "REM "
+	echo "" >> ${_sqlFile}
+	echo "REM " >> ${_sqlFile}
+	echo "REM processing AWR Miner dump file \"${_f}\"..." >> ${_sqlFile}
+	echo "REM " >> ${_sqlFile}
 	#
 	declare -a _sections=(	"OS-INFORMATION" "PATCH-HISTORY" "MODULE" "SNAP-HISTORY" "MEMORY" "MEMORY-SGA-ADVICE" "MEMORY-PGA-ADVICE"
 				"SIZE-ON-DISK" "OSSTAT" "MAIN-METRICS" "DATABASE-PARAMETERS" "AVERAGE-ACTIVE-SESSIONS" "IO-WAIT-HISTOGRAM"
@@ -144,7 +149,7 @@ do
 	_maxSzOnDiskGiB=0.0
 	_prevSecs[0]=0; _prevSecs[1]=0; _prevSecs[2]=0; _prevSecs[3]=0; _prevSecs[4]=0; 
 	_prevSecs[5]=0; _prevSecs[6]=0; _prevSecs[7]=0; _prevSecs[8]=0
-	_tmpFile=/tmp/.cr_awrm_$$.txt
+	_tmpFile=/tmp/.awrm_gen_$$.txt
 	#
 	sed -e '/^[[:space:]]*$/d' -e '/^----*/d' -e '/^Elapsed: /d' -e '/^#/d' ${_f} > ${_tmpFile}
 	while read _Line
@@ -189,7 +194,7 @@ do
 							esac
 							;;
 				"MEMORY")		typeset -i _inst=`echo ${_Line} | awk '{print $2}'`
-							echo "insert into awr_miner_mem values ('${_dbName}',${_inst},`echo ${_Line} | awk '{printf("%.02f\n",($3+$4))}'`);"
+							echo "insert into awr_miner_mem values ('${_dbName}',${_inst},`echo ${_Line} | awk '{printf("%.02f\n",($3+$4))}'`);" >> ${_sqlFile}
 							;;
 				"SIZE-ON-DISK")		_szOnDiskGiB=`echo ${_Line} | awk '{printf("%.02f\n",$2)}'`
 							if [[ "`echo ${_szOnDiskGiB} ${_maxSzOnDiskGiB} | awk '{if($1>$2){print "GT"}}'`" = "GT" ]]
@@ -198,7 +203,7 @@ do
 							fi
 							;;
 				"OSSTAT")		typeset -i _inst=`echo ${_Line} | awk '{print $2}'`
-							echo "insert into awr_miner_load values ('${_dbName}',${_inst},`echo ${_Line} | awk '{printf("%d,%.02f\n",$1,$3)}'`);"
+							echo "insert into awr_miner_load values ('${_dbName}',${_inst},`echo ${_Line} | awk '{printf("%d,%.02f\n",$1,$3)}'`);" >> ${_sqlFile}
 							;;
 				"MAIN-METRICS")		typeset -i _inst=`echo ${_Line} | awk '{print $5}'`
 							_endDtTm=`echo ${_Line} | awk '{print $3" "$4}'`
@@ -211,7 +216,7 @@ do
 							fi
 							_prevSecs[${_inst}]=${_secs}
 							_str="${_x},`echo ${_Line} | awk '{printf("%d,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f,%.02f\n",$1,$15,$16,$17,$18,$19,$28,$29,$30,$31,$34,$35,$36,$37,$40)}'`"
-							echo "insert into awr_miner_metrics values ('${_dbName}',${_inst},${_str});"
+							echo "insert into awr_miner_metrics values ('${_dbName}',${_inst},${_str});" >> ${_sqlFile}
 							;;
 				"DATABASE-PARAMETERS")	_p=`echo ${_Line} | awk '{print $1}'`
 							if [ ${_p} == "db_block_size" ] ||
@@ -233,7 +238,7 @@ do
 							   [ ${_p} == "streams_pool_size" ]
 							then
 								_v=`echo ${_Line} | awk '{print $2}'`
-								echo "insert into awr_miner_parm values ('${_dbName}','${_p}','${_v}');"
+								echo "insert into awr_miner_parm values ('${_dbName}','${_p}','${_v}');" >> ${_sqlFile}
 							fi
 							;;
 				"AVERAGE-ACTIVE-SESSIONS")	break
@@ -246,16 +251,16 @@ do
 	done < ${_tmpFile}
 	rm -f ${_tmpFile}
 	#
-	echo "insert into awr_miner_info values ('${_dbName}','${_dbHosts}',${_dbNumInstances},${_numCpus},${_numCpuCores},${_physMemGiB},'${_platformName}','${_dbVersion}','${_runModule}','${_awrMinerVersion}');"
-	echo "insert into awr_miner_disk values ('${_dbName}',${_szOnDiskGiB},${_maxSzOnDiskGiB});"
-	echo "commit;"
+	echo "insert into awr_miner_info values ('${_dbName}','${_dbHosts}',${_dbNumInstances},${_numCpus},${_numCpuCores},${_physMemGiB},'${_platformName}','${_dbVersion}','${_runModule}','${_awrMinerVersion}');" >> ${_sqlFile}
+	echo "insert into awr_miner_disk values ('${_dbName}',${_szOnDiskGiB},${_maxSzOnDiskGiB});" >> ${_sqlFile}
+	echo "commit;" >> ${_sqlFile}
 	#
 done
 #
 #--------------------------------------------------------------------------------
 # ...finally, recreate the three largest tables as compressed...
 #--------------------------------------------------------------------------------
-cat << __EOF2__
+cat << __EOF2__ >> ${_sqlFile}
 
 create table xtmpx compress as select * from awr_miner_mem;
 drop table awr_miner_mem purge;
