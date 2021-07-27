@@ -13,6 +13,7 @@ The "awrm_gen.sh" script takes no command-line parameters, but it may take sever
 The "awrm_gen.sh" script must reside in the same directory as the AWR Miner dump files (named "awr-hist-\*.out").
 
 To execute in background...
+
        $ nohup ./awrm_gen.sh > awrm_gen.sql 2> awrm_gen.err &
        
 ...where the above command will execute the bash script "awrm_gen.sh" to survive and ignore shell "hang up" interrupts, meaning that you can log out from the shell once the script is submitted, and the script will continue running in background.  All standard output will be collected in a file named "awrm_gen.sql" and any error messages to standard error will be collect in a file named "awrm_gen.err".
